@@ -67,7 +67,7 @@ class BitMatrix:
 
 class MT19937Cracker:
     def __init__(self):
-        self.n = 19937
+        self.n = 19968
         self.__bitMatrix = BitMatrix(self.n)
         self._x = [0] * self.n
         self.state = [0] * 624
@@ -172,7 +172,7 @@ def main(observation):
 
 if __name__ == "__main__":
     from random import getrandbits
-    observation = [getrandbits(1) for _ in range(19937)]
+    observation = [getrandbits(1) for _ in range(19968)]
     print(f"real={getrandbits(32)}")
 
     main(observation)
