@@ -1,17 +1,12 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <stdint.h>
+#include "mt19937.h"
 
-#define N 624
-#define M 397
-#define MATRIX_A 0x9908b0df
-#define UPPER_MASK 0x80000000
-#define LOWER_MASK 0x7fffffff
 
 typedef struct {
     PyObject_HEAD
-    uint32_t state[N];
-    int index;
+    MT19937_C mt;
 } MT19937Object;
 
 static void
@@ -27,11 +22,18 @@ MT19937_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self = (MT19937Object *)type->tp_alloc(type, 0);
     if (self != NULL) {
         for (int i = 0; i < N; i++) {
-            self->state[i] = 0;
+            self->mt.state[i] = 0;
         }
-        self->index = N + 1;
+        self->mt.index = N + 1;
     }
     return (PyObject *)self;
+}
+
+void
+mt_init(MT19937_C *mt, uint32_t *state_array)
+{
+    memcpy(mt->state, state_array, N * sizeof(uint32_t));
+    mt->index = N;
 }
 
 static int
@@ -53,20 +55,23 @@ MT19937_init(MT19937Object *self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
+    uint32_t state_array[N];
     for (int i = 0; i < N; i++) {
         PyObject *item = PyList_GetItem(state_list, i);
         if (!PyLong_Check(item)) {
             PyErr_SetString(PyExc_TypeError, "All state elements must be integers");
             return -1;
         }
-        self->state[i] = PyLong_AsUnsignedLong(item) & 0xFFFFFFFF;
+        state_array[i] = PyLong_AsUnsignedLong(item) & 0xFFFFFFFF;
     }
-    self->index = N;
+    mt_init(&self->mt, state_array);
 
     return 0;
 }
 
-static void twist(MT19937Object *self) {
+static void
+twist(MT19937_C *self)
+{
     for (int i = 0; i < N; i++) {
         uint32_t x = (self->state[i] & UPPER_MASK) | (self->state[(i + 1) % N] & LOWER_MASK);
         uint32_t xA = x >> 1;
@@ -78,27 +83,30 @@ static void twist(MT19937Object *self) {
     self->index = 0;
 }
 
-static PyObject *
-MT19937_extract_number(MT19937Object *self, PyObject *Py_UNUSED(ignored))
+uint32_t
+mt_extract(MT19937_C *self)
 {
-    if (self->index >= N) {
+    if (self->index >= N){
         twist(self);
     }
-    
     uint32_t y = self->state[self->index++];
     y ^= y >> 11;
-    y ^= (y << 7) & 0x9d2c5680;
-    y ^= (y << 15) & 0xefc60000;
+    y ^= (y << 7) & 0x9d2c5680U;
+    y ^= (y << 15) & 0xefc60000U;
     y ^= y >> 18;
-    
+    return y;
+}
+
+static PyObject *MT19937_extract_number(MT19937Object *self, PyObject *Py_UNUSED(ignored)) {
+    uint32_t y = mt_extract(&(self->mt));
     return PyLong_FromUnsignedLong(y);
 }
+
 
 static PyMethodDef MT19937_methods[] = {
     {"extract_number", (PyCFunction)MT19937_extract_number, METH_NOARGS,
      PyDoc_STR("Extract a random number")},
-    {NULL, NULL, 0, NULL}
-    // {NULL}
+    {NULL}
 };
 
 static PyTypeObject MT19937Type = {
@@ -117,7 +125,7 @@ static PyTypeObject MT19937Type = {
 static PyModuleDef mt19937module = {
     PyModuleDef_HEAD_INIT,
     .m_name = "mt19937",
-    .m_doc = "High-performance Mersenne Twister implementation",
+    .m_doc = "Simple Mersenne Twister implementation",
     .m_size = -1,
 };
 

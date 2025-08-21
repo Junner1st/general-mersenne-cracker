@@ -1,7 +1,6 @@
 .vscode/
 
 *.so
-build/
 
 *.pyc
 __pycache__/
