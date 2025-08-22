@@ -1,6 +1,5 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
-#include <stdint.h>
 #include "mt19937.h"
 
 
@@ -97,7 +96,8 @@ mt_extract(MT19937_C *self)
     return y;
 }
 
-static PyObject *MT19937_extract_number(MT19937Object *self, PyObject *Py_UNUSED(ignored)) {
+static PyObject *
+MT19937_extract_number(MT19937Object *self, PyObject *Py_UNUSED(ignored)) {
     uint32_t y = mt_extract(&(self->mt));
     return PyLong_FromUnsignedLong(y);
 }

@@ -1,31 +1,28 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
-#include <stdint.h>
 #include <stdlib.h>
 
+#include "bitmatrix.h"
 #include "mt19937.h"
 
 typedef struct {
     PyObject_HEAD
-    int n;
-    int word_size;       // fixed as 64
-    int num_words;       // number of 64-bit words per row
-    uint64_t *rows;      // flat buffer: n * num_words
+    BitMatrix_C bm;
 } BitMatrixObject;
 
 /* Deallocate */
 static void
 BitMatrix_dealloc(BitMatrixObject *self)
 {
-    free(self->rows);
+    free(self->bm.rows);
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 
 void
-BitMatrix_matrix_builder(BitMatrixObject *self)
+BitMatrix_matrix_builder(BitMatrix_C *bm)
 {
-    for (int j = 0; j < self->n; j++) {
+    for (int j = 0; j < bm->n; j++) {
         int word_idx = j >> 5;
         int bit_pos = j % 32;
 
@@ -37,16 +34,31 @@ BitMatrix_matrix_builder(BitMatrixObject *self)
         MT19937_C mt;
         mt_init(&mt, state);
 
-        for (int i = 0; i < self->n; i++) {
+        for (int i = 0; i < bm->n; i++) {
             uint32_t y = mt_extract(&mt);
             int msb = (y >> 31) & 1;
             if (msb) {
                 int w = j >> 6;
                 int b = j % 64;
-                self->rows[i * self->num_words + w] |= ((uint64_t)1 << b);
+                bm->rows[i * bm->num_words + w] |= ((uint64_t)1 << b);
             }
         }
     }
+}
+
+int
+bm_init(BitMatrix_C *bm, int n)
+{
+    bm->n = n;
+    bm->word_size = 64;
+    bm->num_words = (n + 63) >> 6;
+    bm->rows = calloc((size_t) bm->n * bm->num_words, sizeof(uint64_t));
+    if (!bm->rows) {
+        return -1;
+    }
+    BitMatrix_matrix_builder(bm);
+
+    return 0;
 }
 
 /* __init__(self, n) */
@@ -57,17 +69,21 @@ BitMatrix_init(BitMatrixObject *self, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTuple(args, "i", &n))
         return -1;
 
-    self->n = n;
-    self->word_size = 64;
-    self->num_words = (n + 63) / 64;
-    self->rows = calloc((size_t) self->n * self->num_words, sizeof(uint64_t));
-    if (!self->rows) {
-        return -1;
-    }
-    BitMatrix_matrix_builder(self);
-    
-    return 0;
+    return bm_init(&self->bm, n);
 }
+
+int
+get_bit(BitMatrix_C *bm, int r, int c)
+{
+    if (r < 0 || r >= bm->n || c < 0 || c >= bm->n) {
+        return 0;
+    }
+    int w = c >> 6;
+    int b = c % 64;
+    uint64_t val = bm->rows[(size_t) r * bm->num_words + w];
+    return ((val >> b) & 1);
+}
+
 
 /* get_bit(self, r, c) -> bool */
 static PyObject *
@@ -77,15 +93,22 @@ _bitmatrix_BitMatrix_get_bit_impl(PyObject *self, PyObject *args)
     int r, c;
     if (!PyArg_ParseTuple(args, "ii", &r, &c))
         return NULL;
-    int w = c / 64;
-    int b = c % 64;
-    uint64_t val = obj->rows[(size_t) r * obj->num_words + w];
-    if (val & ((uint64_t)1 << b))
+
+    if (get_bit(&obj->bm, r, c))
         Py_RETURN_TRUE;
     else
         Py_RETURN_FALSE;
 }
 
+void
+xor_row(BitMatrix_C *self, int r1, int r2)
+{
+    uint64_t *row1 = &self->rows[(size_t) r1 * self->num_words];
+    uint64_t *row2 = &self->rows[(size_t) r2 * self->num_words];
+    for (int i = 0; i < self->num_words; i++) {
+        row1[i] ^= row2[i];
+    }
+}
 /* xor_row(self, r1, r2) */
 static PyObject *
 _bitmatrix_BitMatrix_xor_row_impl(PyObject *self, PyObject *args)
@@ -94,14 +117,23 @@ _bitmatrix_BitMatrix_xor_row_impl(PyObject *self, PyObject *args)
     int r1, r2;
     if (!PyArg_ParseTuple(args, "ii", &r1, &r2))
         return NULL;
-    uint64_t *row1 = &obj->rows[(size_t) r1 * obj->num_words];
-    uint64_t *row2 = &obj->rows[(size_t) r2 * obj->num_words];
-    for (int i = 0; i < obj->num_words; i++) {
-        row1[i] ^= row2[i];
-    }
+
+    xor_row(&obj->bm, r1, r2);
+
     Py_RETURN_NONE;
 }
 
+void
+swap_row(BitMatrix_C *bm, int r1, int r2)
+{
+    uint64_t *row1 = &bm->rows[(size_t) r1 * bm->num_words];
+    uint64_t *row2 = &bm->rows[(size_t) r2 * bm->num_words];
+    for (int i = 0; i < bm->num_words; i++) {
+        uint64_t tmp = row1[i];
+        row1[i] = row2[i];
+        row2[i] = tmp;
+    }
+}
 /* swap_row(self, r1, r2) */
 static PyObject *
 _bitmatrix_BitMatrix_swap_row_impl(PyObject *self, PyObject *args)
@@ -110,13 +142,9 @@ _bitmatrix_BitMatrix_swap_row_impl(PyObject *self, PyObject *args)
     int r1, r2;
     if (!PyArg_ParseTuple(args, "ii", &r1, &r2))
         return NULL;
-    uint64_t *row1 = &obj->rows[(size_t) r1 * obj->num_words];
-    uint64_t *row2 = &obj->rows[(size_t) r2 * obj->num_words];
-    for (int i = 0; i < obj->num_words; i++) {
-        uint64_t tmp = row1[i];
-        row1[i] = row2[i];
-        row2[i] = tmp;
-    }
+    
+    swap_row(&obj->bm, r1, r2);
+
     Py_RETURN_NONE;
 }
 

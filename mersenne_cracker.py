@@ -133,4 +133,3 @@ if __name__ == "__main__":
     print(f"real={getrandbits(32)}")
 
     main(observation)
-
