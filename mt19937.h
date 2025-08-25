@@ -17,4 +17,4 @@ typedef struct {
 void mt_init(MT19937_C *mt, uint32_t *state_array);
 uint32_t mt_extract(MT19937_C *mt);
 
-#endif
+#endif // MT19937_H

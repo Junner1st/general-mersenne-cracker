@@ -12,7 +12,13 @@ bm_ext = Extension(
     extra_compile_args=['-O3', '-march=native'],
 )
 
+cm_ext = Extension(
+    name='mt19937cracker',
+    sources=['mt19937.c', 'bitmatrix.c', 'mt19937cracker.c'],
+    extra_compile_args=['-O3', '-march=native'],
+)
+
 setup(
-    name='cracker',
-    ext_modules=[mt_ext, bm_ext],
+    name='cracker_suite',
+    ext_modules=[mt_ext, bm_ext, cm_ext],
 )

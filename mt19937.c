@@ -35,23 +35,23 @@ mt_init(MT19937_C *mt, uint32_t *state_array)
     mt->index = N;
 }
 
-static int
+static PyObject *
 MT19937_init(MT19937Object *self, PyObject *args, PyObject *kwds)
 {
     PyObject *state_list;
     if (!PyArg_ParseTuple(args, "O", &state_list)) {
-        return -1;
+        return NULL;
     }
 
     if (!PyList_Check(state_list)) {
         PyErr_SetString(PyExc_TypeError, "state must be a list");
-        return -1;
+        return NULL;
     }
 
     Py_ssize_t length = PyList_Size(state_list);
     if (length != N) {
         PyErr_Format(PyExc_ValueError, "State list must have exactly %d elements", N);
-        return -1;
+        return NULL;
     }
 
     uint32_t state_array[N];
@@ -59,13 +59,13 @@ MT19937_init(MT19937Object *self, PyObject *args, PyObject *kwds)
         PyObject *item = PyList_GetItem(state_list, i);
         if (!PyLong_Check(item)) {
             PyErr_SetString(PyExc_TypeError, "All state elements must be integers");
-            return -1;
+            return NULL;
         }
         state_array[i] = PyLong_AsUnsignedLong(item) & 0xFFFFFFFF;
     }
     mt_init(&self->mt, state_array);
 
-    return 0;
+    Py_RETURN_NONE;
 }
 
 static void

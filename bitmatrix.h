@@ -16,4 +16,4 @@ void xor_row(BitMatrix_C *bm, int row1_index, int row2_index);
 void swap_row(BitMatrix_C *bm, int row1_index, int row2_index);
 int bm_init(BitMatrix_C *bm, int n);
 
-#endif
+#endif // BITMATRIX_H
