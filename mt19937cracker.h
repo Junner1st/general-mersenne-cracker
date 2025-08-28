@@ -22,9 +22,9 @@ int gaussian_elimination(MT19937Cracker_C *mc, uint32_t observation[], BitMatrix
 void back_substitution(MT19937Cracker_C *mc, int current_row, int *pivot_col, BitMatrix_C *bm, uint32_t observation[]);
 int consistency_checker(MT19937Cracker_C *mc, int current_row, uint32_t observation[]);
 void reconstruct_state(MT19937Cracker_C *mc);
-void advance_to_current(MT19937Cracker_C *mc);
+void advance_to_current(MT19937Cracker_C *mc, int bits);
 
-void cracker(MT19937Cracker_C *mc, uint32_t observation[]);
+void cracker(MT19937Cracker_C *mc, uint32_t observation[], int bits);
 uint32_t getrandbits(MT19937Cracker_C *mc);
 uint32_t *getstate(MT19937Cracker_C *mc);
 

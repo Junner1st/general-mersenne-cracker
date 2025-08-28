@@ -8,8 +8,6 @@ typedef struct {
     MT19937Cracker_C mc;
 } MT19937CrackerObject;
 
-
-
 static PyObject *
 MT19937Cracker_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
@@ -43,7 +41,7 @@ mc_init(MT19937Cracker_C *self)
 {
     self->n = 19968;
     self->x = (uint32_t *)calloc(self->n, sizeof(uint32_t)); // allocate and zero
-    for (int i = 0; i < 624; ++i) {
+    for (int i = 0; i < N; ++i) {
         self->state[i] = 0;
     }
     self->state_recovered = 0;
@@ -76,6 +74,7 @@ gaussian_elimination(MT19937Cracker_C *mc, uint32_t observation[], BitMatrix_C *
             }
         ++current_row;
     }
+
     return current_row;
 }
 
@@ -95,13 +94,20 @@ back_substitution(MT19937Cracker_C *mc, int current_row, int pivot_col[], BitMat
 int
 consistency_checker(MT19937Cracker_C *mc, int current_row, uint32_t observation[])
 {
+    printf("rank=%d\n", current_row);
     for (int row = current_row; row < mc->n; ++row)
         if (observation[row] != 0) {
             fprintf(stderr, "Singular matrix, inconsistent system\n");
             return EXIT_FAILURE;
         }
+    if (current_row != mc->n - 31) {
+        fprintf(stderr, "underdetermined system, rank=%d\n", current_row);
+        return EXIT_FAILURE;
+    }
     return 0;
+    // should return 0 or 1
 }
+// ranks={19937,19937,19552,19937,18947,19117,18890,19337,18572,18948,19401,18298,17940,18170,18864,19937,18866,18024,17402,16969,16692,16557,16539,16625,16808,17069,17407,17807,18266,18777,19336,19937}
 
 void
 reconstruct_state(MT19937Cracker_C *mc)
@@ -110,28 +116,35 @@ reconstruct_state(MT19937Cracker_C *mc)
     for (int j = 0; j < mc->n; ++j)
         if (mc->x[j]) {
             word_idx = j >> 5;
-            bit_pos = j % 32;
+            bit_pos = j & 31;
             mc->state[word_idx] |= (1 << bit_pos);
         }
 }
 
 void
-advance_to_current(MT19937Cracker_C *mc)
+advance_to_current(MT19937Cracker_C *mc, int bits)
 {
+    int steps = (mc->n + bits - 1) / bits;
     mt_init(&mc->mt, mc->state);
-    for (int i = 0; i < mc->n; ++i)
+    for (int i = 0; i < steps; ++i)
         mt_extract(&mc->mt);
 }
 
 void
-cracker(MT19937Cracker_C *mc, uint32_t observation[])
+cracker(MT19937Cracker_C *mc, uint32_t observation[], int bits)
 {
+    if (bits!=32) {
+        if (bits >= 16) bits = 16;
+        else if (bits >= 8) bits = 8;
+        else if (bits >= 4) bits = 4;
+        else if (bits >= 2) bits = 2;
+    }
     int n = mc->n;
     int *pivot_col = malloc(n * sizeof(int));
     if (!pivot_col) return;
 
     BitMatrix_C bm;
-    bm_init(&bm, n);
+    bm_init(&bm, n, bits);
 
     for (int i = 0; i < n; ++i) {
         pivot_col[i] = -1;
@@ -141,7 +154,7 @@ cracker(MT19937Cracker_C *mc, uint32_t observation[])
     if (consistency_checker(mc, current_row, observation))
         return;
     reconstruct_state(mc);
-    advance_to_current(mc);
+    advance_to_current(mc, bits);
     mc->state_recovered = 1;
 
     free(pivot_col);
@@ -190,7 +203,8 @@ _mt19937cracker_MT19937Cracker_cracker_impl(PyObject *self, PyObject *args) {
 
     int n = obj->mc.n;
     PyObject *observe_list;
-    if (!PyArg_ParseTuple(args, "O", &observe_list)) {
+    int bits;
+    if (!PyArg_ParseTuple(args, "Oi", &observe_list, &bits)) {
         return NULL;
     }
 
@@ -214,7 +228,7 @@ _mt19937cracker_MT19937Cracker_cracker_impl(PyObject *self, PyObject *args) {
         }
         observation[i] = PyLong_AsUnsignedLong(item) & 0xFFFFFFFFU;
     }
-    cracker(&obj->mc, observation);
+    cracker(&obj->mc, observation, bits);
     Py_RETURN_NONE;
 }
 
